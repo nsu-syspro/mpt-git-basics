@@ -1,7 +1,5 @@
 # Знакомство с Git
 
-<img alt="points bar" align="right" height="36" src="../../blob/badges/.github/badges/points-bar.svg" />
-
 [![Git Commit](https://imgs.xkcd.com/comics/git_commit_2x.png)](https://xkcd.com/1296/)
 
 Все задания в данном разделе подразумевают манипуляцию с коммитами и ветками в текущем репозитории.
