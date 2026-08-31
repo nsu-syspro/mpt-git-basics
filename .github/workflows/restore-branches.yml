@@ -50,8 +50,15 @@
 #   4. Rebuild `main` as a single-root branch: original template history +
 #      Classroom50's control files on top, WITHOUT this workflow file.
 #   5. If the force-push is rejected by Classroom50's submission-history
-#      ruleset, fall back to a ruleset-safe two-parent graft (scaffold commit
-#      as first parent => ordinary fast-forward) that likewise excludes this file.
+#      ruleset, fall back to a ruleset-safe two-parent graft (current remote
+#      scaffold tip as first parent => ordinary fast-forward) that likewise
+#      excludes this file.
+#
+# Robustness: `main` may advance while this runs — Classroom50 provisioning
+# can push several commits in quick succession, and this workflow can re-fire
+# on the template. Both paths therefore `git fetch origin main` first and
+# anchor on the CURRENT remote tip (never the trigger-time checkout), so the
+# fallback's push is always a fast-forward even if the trigger commit is stale.
 #
 # THE RULESET THAT SHAPED THIS FILE
 # ----------------------------------
@@ -177,8 +184,22 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          SCAFFOLD_TIP=$(git rev-parse HEAD)
           SOURCE_MAIN=$(git rev-parse source/main)
+
+          # Main can advance while we work: Classroom50 provisioning can push
+          # several commits in quick succession, and this workflow itself may
+          # re-fire. Always anchor on the CURRENT remote tip, not the commit
+          # that happened to trigger this run, so the fast-forward fallback
+          # below is always valid.
+          git fetch origin main
+          SCAFFOLD_TIP=$(git rev-parse origin/main)
+
+          # Safety: only ever touch a Classroom50 scaffold. If origin/main
+          # points at something else, refuse rather than clobber it.
+          if ! git cat-file -e "${SCAFFOLD_TIP}:.classroom50.yaml" 2>/dev/null; then
+            echo "origin/main is not a Classroom50 scaffold — refusing to touch it."
+            exit 1
+          fi
 
           # Files Classroom50 landed on the snapshot on top of the template
           # snapshot (.classroom50.yaml, autograde shim, ...) = paths present in
@@ -211,8 +232,20 @@ jobs:
 
           echo "Force-push to main rejected (classroom50 protect-submission-history ruleset)."
           echo "Falling back to a ruleset-safe two-parent graft (also removes this workflow)."
+
+          # Re-fetch: remote main may have advanced again. Anchor the graft's
+          # FIRST parent on the current remote tip so pushing main is an
+          # ordinary fast-forward (the ruleset blocks force, not fast-forward).
+          git fetch origin main
+          SCAFFOLD_TIP=$(git rev-parse origin/main)
+          git cat-file -e "${SCAFFOLD_TIP}:.classroom50.yaml" 2>/dev/null || {
+            echo "origin/main moved to a non-scaffold commit — aborting fallback."
+            exit 1
+          }
+
           git checkout --detach "$SCAFFOLD_TIP"
           git rm -q --ignore-unmatch .github/workflows/restore-branches.yml
+          git add -A
           GRAFT_TREE=$(git write-tree)
           GRAFT=$(git commit-tree "$GRAFT_TREE" \
             -p "$SCAFFOLD_TIP" -p "$SOURCE_MAIN" \
