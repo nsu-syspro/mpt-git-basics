@@ -61,4 +61,14 @@ comparing 10 and 10
 [4, 6, 10, 10, 20, 30, 40]
 \0
 EOF
+
+# Run the check at the merge commit itself, not at the current HEAD,
+# and restore the previous commit point afterwards (even on failure)
+ORIG_REF=$(git symbolic-ref --short -q HEAD || git rev-parse HEAD)
+restore_head() {
+  git checkout -q --detach "$ORIG_REF" 2> /dev/null || git checkout -q "$ORIG_REF"
+}
+trap restore_head EXIT
+
+git checkout -q --detach "$FIRST_MERGE_COMMIT"
 diff -U 1000 <(echo "$EXPECTED") <(python3 src/sort.py)
